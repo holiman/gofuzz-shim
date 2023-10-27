@@ -4,7 +4,9 @@ import (
 	"time"
 )
 
-type B struct{}
+type B struct {
+	N int
+}
 
 func (b *B) Cleanup(f func())                  {}
 func (b *B) Error(args ...any)                 {}

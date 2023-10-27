@@ -10,6 +10,7 @@ import (
 	"golang.org/x/exp/slog"
 	"os/exec"
 	"path/filepath"
+	"strings"
 )
 
 var (
@@ -132,15 +133,16 @@ func build(main, out string, buildFlags, tags []string) error {
 	args := []string{"build", "-o", out}
 	args = append(args, buildFlags...)
 	if len(tags) > 0 {
-		args = append(args, "-t")
-		args = append(args, tags...)
+		args = append(args, "-tags", strings.Join(tags, ","))
 	}
 	args = append(args, main)
 	cmd := exec.Command("go", args...)
 	slog.Info("Building", "command", cmd)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
+	if out, err := cmd.CombinedOutput(); err != nil {
+		fmt.Fprintln(os.Stderr, string(out))
+		return err
+	}
+	return nil
 }
 
 // createMain creates a new main.xx.go-file in the current directory,
