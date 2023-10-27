@@ -60,9 +60,10 @@ gopath is '/home/user/go/src'
 	}
 
 	tagsFlag = &cli.StringSliceFlag{
-		Name:  "build.tags",
-		Usage: `Extra build flags. Example '--build.tags="fo,bar,zoo"'`,
-		Value: cli.NewStringSlice("gofuzz_libfuzzer", "libfuzzer"),
+		Name:    "build.tags",
+		Aliases: []string{"tags"},
+		Usage:   `Extra build flags. Example '--build.tags="fo,bar,zoo"'`,
+		Value:   cli.NewStringSlice("gofuzz_libfuzzer", "libfuzzer"),
 	}
 )
 
