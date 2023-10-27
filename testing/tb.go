@@ -1,4 +1,4 @@
-package faketest
+package testing
 
 // compile-time conformance checks
 var (
