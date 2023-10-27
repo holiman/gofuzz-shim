@@ -96,7 +96,7 @@ func shim(ctx *cli.Context) error {
 		repoRoot   = fmt.Sprintf("%v/src", ctx.String(goPathFlag.Name))
 		path       = filepath.Join(repoRoot, targetPkg)
 		outputFile = ctx.String(outputFlag.Name)
-		buildArgs  = append(ctx.StringSlice(buildArgsFlag.Name), "-gcflags", "all=-d=libfuzzer", "-buildmode=c-archive ")
+		buildArgs  = append(ctx.StringSlice(buildArgsFlag.Name), "-gcflags", "all=-d=libfuzzer", "-buildmode=c-archive")
 	)
 	slog.Info("Fuzz-builder starting",
 		"function", fuzzFunc, "reporoot", repoRoot,
