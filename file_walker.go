@@ -48,7 +48,7 @@ func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, err erro
 	// Replace import path, if needed
 	if !astutil.DeleteImport(fset, astFile, "testing") {
 		// Maybe the user is trying to re-run it after already succeding once. If so, just continue
-		if astutil.UsesImport(fset, newImport) {
+		if astutil.UsesImport(astFile, newImport) {
 			slog.Info("File already instrumented", "file", path)
 			return true, nil
 		}
