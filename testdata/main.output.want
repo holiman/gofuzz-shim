@@ -27,7 +27,7 @@ func LibFuzzerFuzzEncoder(data []byte) int {
 	fuzzer := testing.NewF(data)
 	defer fuzzer.Finished()
 	target.FuzzEncoder(fuzzer)
-	return 1
+	return fuzzer.ReturnValue()
 }
 
 func catchPanics() {

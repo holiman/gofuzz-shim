@@ -1,7 +1,6 @@
 package input
 
 import (
-	"bytes"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -12,12 +11,13 @@ import (
 
 // Source takes a byteslice, and arguments can be pulled from it.
 type Source struct {
-	data      *bytes.Reader
+	s         []byte
+	i         int64 // current reading index
 	exhausted bool
 }
 
 func NewSource(data []byte) *Source {
-	return &Source{bytes.NewReader(data), false}
+	return &Source{data, 0, false}
 }
 
 // IsExhausted returns true if we tried to read more data than this source
@@ -28,21 +28,41 @@ func (s *Source) IsExhausted() bool {
 
 // Len returns the number of bytes of the unread portion of the data.
 func (s *Source) Len() int {
-	return s.data.Len()
+	if s.i >= int64(len(s.s)) {
+		return 0
+	}
+	return int(int64(len(s.s)) - s.i)
 }
 
-// Remaining returns all remaining data in the source
-func (s *Source) Remaining() []byte {
-	buf := make([]byte, s.data.Len())
-	s.data.Read(buf) // todo perhaps deliver via reference instead of copying via Read
-	return buf
+// Used returns the number of bytes already consumed.
+func (s *Source) Used() int {
+	return int(s.i)
 }
 
-// Bytes returns size bytes of data.
+// Read implements the io.Reader interface.
+func (s *Source) Read(b []byte) (n int, err error) {
+	if s.i >= int64(len(s.s)) {
+		return 0, io.EOF
+	}
+	n = copy(b, s.s[s.i:])
+	s.i += int64(n)
+	return
+}
+
+// Bytes returns a slice of size bytes, as a direct reference is possible.
 func (s *Source) Bytes(size int) []byte {
+	if size == 0 {
+		return []byte{}
+	}
+	if end := int(s.i) + size; end < len(s.s) { // Fast-path, no-copy deliver
+		pos := s.i
+		s.i += int64(size)
+		return s.s[pos:end]
+	}
+	// Slow path
 	buf := make([]byte, size)
-	_, err := s.data.Read(buf) // todo perhaps deliver via reference instead of copying via Read
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+	n, err := s.Read(buf)
+	if errors.Is(err, io.EOF) || n < size {
 		s.exhausted = true
 	}
 	return buf
@@ -55,19 +75,19 @@ func (s *Source) readInt(num reflect.Kind) int64 {
 	switch num {
 	case reflect.Int8:
 		v := int8(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = int64(v)
 	case reflect.Int16:
 		v := int16(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = int64(v)
 	case reflect.Int32:
 		v := int32(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = int64(v)
 	case reflect.Int64, reflect.Int:
 		v := int64(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = int64(v)
 	case reflect.Slice:
 		panic(1)
@@ -91,19 +111,19 @@ func (s *Source) readUint(num reflect.Kind) uint64 {
 	switch num {
 	case reflect.Uint8:
 		v := uint8(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = uint64(v)
 	case reflect.Uint16:
 		v := uint16(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = uint64(v)
 	case reflect.Uint32:
 		v := uint32(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = uint64(v)
 	case reflect.Uint, reflect.Uint64:
 		v := uint64(0)
-		err = binary.Read(s.data, binary.BigEndian, &v)
+		err = binary.Read(s, binary.BigEndian, &v)
 		ret = uint64(v)
 	default:
 		panic(fmt.Sprintf("unsupported type: %v", num))
@@ -113,6 +133,7 @@ func (s *Source) readUint(num reflect.Kind) uint64 {
 	}
 	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
 		s.exhausted = true
+		return ret
 	}
 	// Otherwise, this is a programming error
 	panic(err)
@@ -150,7 +171,8 @@ func (s *Source) FillAndCall(ff any, arg0 reflect.Value) (ok bool) {
 	// 1. Read N bytes [b1, b2, b3 .. bn] .
 	// 2. Let the relative weights of b determine how much of the
 	//    remaining input that field n gets
-	bn := s.Bytes(len(dynamic))
+	bn := make([]byte, len(dynamic))
+	s.Read(bn)
 	sum := 0
 	for _, v := range bn {
 		sum += int(v)
