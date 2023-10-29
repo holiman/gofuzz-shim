@@ -169,3 +169,44 @@ func TestDynamicArgsZeroWeight(t *testing.T) {
 		t.Fatalf("result wrong\nhave %q\nwant %q", have, want)
 	}
 }
+
+func TestExhausted(t *testing.T) {
+	input := NewSource(make([]byte, 8))
+	input.fillArg(reflect.TypeOf(uint64(0)), 0)          // Consumes 8 byte
+	input.fillArg(reflect.TypeOf([]byte{}), input.Len()) // Consumes nothing
+	input.fillArg(reflect.TypeOf(""), input.Len())       // Consumes nothing
+	if input.IsExhausted() {
+		t.Fatalf("expected not exhausted")
+	}
+	input.fillArg(reflect.TypeOf(uint8(0)), 0) // Consumes 1 byte
+	if !input.IsExhausted() {
+		t.Fatalf("expected exhausted")
+	}
+}
+
+func TestReader(t *testing.T) {
+
+	{
+		s := NewSource(fibonacci(100))
+		s.Bytes(100)
+		if s.IsExhausted() {
+			t.Fatal("exp not exhausted")
+		}
+	}
+	{
+		s := NewSource(fibonacci(100))
+		s.Bytes(101)
+		if !s.IsExhausted() {
+			t.Fatal("exp exhausted")
+		}
+	}
+	{
+		s := NewSource(fibonacci(100))
+		s.Bytes(100)
+		s.Bytes(0)
+		s.Bytes(0)
+		if s.IsExhausted() {
+			t.Fatal("exp not exhausted")
+		}
+	}
+}
