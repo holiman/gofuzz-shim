@@ -2,7 +2,6 @@ package input
 
 import (
 	"encoding/binary"
-	"errors"
 	"fmt"
 	"io"
 	"math"
@@ -42,18 +41,19 @@ func (s *Source) Used() int {
 // Read implements the io.Reader interface.
 func (s *Source) Read(b []byte) (n int, err error) {
 	if s.i >= int64(len(s.s)) {
-		return 0, io.EOF
+		n, err = 0, io.EOF
+	} else {
+		n = copy(b, s.s[s.i:])
+		s.i += int64(n)
 	}
-	n = copy(b, s.s[s.i:])
-	s.i += int64(n)
-	return
+	if n < len(b) {
+		s.exhausted = true
+	}
+	return n, err
 }
 
-// Bytes returns a slice of size bytes, as a direct reference is possible.
-func (s *Source) Bytes(size int) []byte {
-	if size == 0 {
-		return []byte{}
-	}
+// getBytes returns a slice of size bytes, as a direct reference if possible.
+func (s *Source) getBytes(size int) []byte {
 	if end := int(s.i) + size; end < len(s.s) { // Fast-path, no-copy deliver
 		pos := s.i
 		s.i += int64(size)
@@ -61,82 +61,38 @@ func (s *Source) Bytes(size int) []byte {
 	}
 	// Slow path
 	buf := make([]byte, size)
-	n, err := s.Read(buf)
-	if errors.Is(err, io.EOF) || n < size {
-		s.exhausted = true
-	}
+	s.Read(buf)
 	return buf
 }
 
 // readInt reads a signed integer from the source
 func (s *Source) readInt(num reflect.Kind) int64 {
-	var err error
-	var ret int64
 	switch num {
 	case reflect.Int8:
-		v := int8(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = int64(v)
+		return int64(int8(s.getBytes(1)[0]))
 	case reflect.Int16:
-		v := int16(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = int64(v)
+		return int64(int16(binary.BigEndian.Uint16(s.getBytes(2))))
 	case reflect.Int32:
-		v := int32(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = int64(v)
+		return int64(int32(binary.BigEndian.Uint32(s.getBytes(4))))
 	case reflect.Int64, reflect.Int:
-		v := int64(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = int64(v)
-	case reflect.Slice:
-		panic(1)
-	default:
-		panic(fmt.Sprintf("unsupported type: %v", num))
+		return int64(binary.BigEndian.Uint64(s.getBytes(8)))
 	}
-	if err == nil {
-		return ret
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		s.exhausted = true
-	}
-	// Otherwise, this is a programming error
-	panic(err)
+	panic(fmt.Sprintf("unsupported type: %v", num))
 }
 
 // readUint reads an unsigned integer from the source
 func (s *Source) readUint(num reflect.Kind) uint64 {
-	var err error
-	var ret uint64
 	switch num {
 	case reflect.Uint8:
-		v := uint8(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = uint64(v)
+		return uint64(uint8(s.getBytes(1)[0]))
 	case reflect.Uint16:
-		v := uint16(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = uint64(v)
+		return uint64(binary.BigEndian.Uint16(s.getBytes(2)))
 	case reflect.Uint32:
-		v := uint32(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = uint64(v)
+		return uint64(binary.BigEndian.Uint32(s.getBytes(4)))
 	case reflect.Uint, reflect.Uint64:
-		v := uint64(0)
-		err = binary.Read(s, binary.BigEndian, &v)
-		ret = uint64(v)
-	default:
-		panic(fmt.Sprintf("unsupported type: %v", num))
+		return binary.BigEndian.Uint64(s.getBytes(8))
 	}
-	if err == nil {
-		return ret
-	}
-	if errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
-		s.exhausted = true
-		return ret
-	}
-	// Otherwise, this is a programming error
-	panic(err)
+	panic(fmt.Sprintf("unsupported type: %v", num))
 }
 
 // FillAndCall fills the argument for the given ff (which is supposed to be a function),
@@ -171,23 +127,22 @@ func (s *Source) FillAndCall(ff any, arg0 reflect.Value) (ok bool) {
 	// 1. Read N bytes [b1, b2, b3 .. bn] .
 	// 2. Let the relative weights of b determine how much of the
 	//    remaining input that field n gets
-	bn := make([]byte, len(dynamic))
-	s.Read(bn)
+	weights := s.getBytes(len(dynamic))
 	sum := 0
-	for _, v := range bn {
+	for _, v := range weights {
 		sum += int(v)
 	}
 	bytesLeft := s.Len()
 	for i, argNum := range dynamic {
 		if i == len(dynamic)-1 { // last element, it get's all that if left
 			args[argNum] = s.fillArg(method.In(argNum), s.Len())
-		} else {
-			var weight = (bytesLeft / len(bn))
-			if sum > 0 {
-				weight = (bytesLeft * int(bn[i])) / sum
-			}
-			args[argNum] = s.fillArg(method.In(argNum), weight)
+			break
 		}
+		var argSize = bytesLeft / len(dynamic)
+		if sum > 0 {
+			argSize = (bytesLeft * int(weights[i])) / sum
+		}
+		args[argNum] = s.fillArg(method.In(argNum), argSize)
 	}
 	if s.IsExhausted() { // exit if we've exhausted the source
 		return false
@@ -210,10 +165,10 @@ func (s *Source) fillArg(v reflect.Type, max int) reflect.Value {
 	case reflect.Bool:
 		newElem.Set(reflect.ValueOf(s.readUint(reflect.Uint8)&0x1 != 0))
 	case reflect.String:
-		newElem.SetString(string(s.Bytes(max)))
+		newElem.SetString(string(s.getBytes(max)))
 	case reflect.Slice:
 		if v.Elem().Kind() == reflect.Uint8 { // []byte
-			newElem.SetBytes(s.Bytes(max))
+			newElem.SetBytes(s.getBytes(max))
 		} else {
 			panic(fmt.Sprintf("unsupported type: %T", newElem.Kind))
 		}

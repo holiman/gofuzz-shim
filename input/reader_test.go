@@ -188,23 +188,23 @@ func TestReader(t *testing.T) {
 
 	{
 		s := NewSource(fibonacci(100))
-		s.Bytes(100)
+		s.getBytes(100)
 		if s.IsExhausted() {
 			t.Fatal("exp not exhausted")
 		}
 	}
 	{
 		s := NewSource(fibonacci(100))
-		s.Bytes(101)
+		s.getBytes(101)
 		if !s.IsExhausted() {
 			t.Fatal("exp exhausted")
 		}
 	}
 	{
 		s := NewSource(fibonacci(100))
-		s.Bytes(100)
-		s.Bytes(0)
-		s.Bytes(0)
+		s.getBytes(100)
+		s.getBytes(0)
+		s.getBytes(0)
 		if s.IsExhausted() {
 			t.Fatal("exp not exhausted")
 		}
