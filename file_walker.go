@@ -17,47 +17,47 @@ import (
 	"strings"
 )
 
-func rewriteTargetFile(path, fuzzerName, newImport string) (ok bool, err error) {
+func rewriteTargetFile(path, fuzzerName, newImport string) (ok bool, restoreFn func(), err error) {
 	// Find which file to operate on
 	files, err := os.ReadDir(path)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	for _, fd := range files {
 		if fd.IsDir() || !strings.HasSuffix(fd.Name(), "_test.go") {
 			continue
 		}
-		if done, err := tryRewriteTargetFile(filepath.Join(path, fd.Name()), fuzzerName, newImport); err != nil {
-			return false, err
+		if done, fn, err := tryRewriteTargetFile(filepath.Join(path, fd.Name()), fuzzerName, newImport); err != nil {
+			return false, nil, err
 		} else if done {
-			return true, nil
+			return true, fn, nil
 		}
 	}
-	return false, nil
+	return false, nil, nil
 }
 
-func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, err error) {
+func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, restoreFn func(), err error) {
 	var fset = token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
-		return false, err
+		return false, nil, err
 	}
 	if present, err := containsMethod(astFile, fuzzerName); err != nil || !present {
-		return false, err
+		return false, nil, err
 	}
 	// Replace import path, if needed
 	if !astutil.DeleteImport(fset, astFile, "testing") {
 		// Maybe the user is trying to re-run it after already succeding once. If so, just continue
 		if astutil.UsesImport(astFile, newImport) {
 			slog.Info("File already instrumented", "file", path)
-			return true, nil
+			return true, nil, nil
 		}
-		return false, nil // nothing to do here
+		return false, nil, nil // nothing to do here
 	}
 	astutil.AddImport(fset, astFile, newImport)
 	// Write into new file
 	if newFile, err := os.Create(path + "_fuzz.go"); err != nil {
-		return false, fmt.Errorf("failed to create new file: %v", err)
+		return false, nil, fmt.Errorf("failed to create new file: %v", err)
 	} else {
 		printer.Fprint(newFile, fset, astFile)
 		newFile.Close()
@@ -65,7 +65,14 @@ func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, err erro
 	}
 	// Rename old file
 	slog.Info("Saving original file", "path", fmt.Sprintf("%v.orig", path))
-	return true, os.Rename(path, fmt.Sprintf("%v.orig", path))
+	if err := os.Rename(path, fmt.Sprintf("%v.orig", path)); err != nil {
+		return false, nil, err
+	}
+	restoreFunc := func() {
+		os.Remove(path + "_fuzz.go")
+		os.Rename(fmt.Sprintf("%v.orig", path), path)
+	}
+	return true, restoreFunc, nil
 }
 
 // containsMethod parses the file at path, and returns true if it contains

@@ -66,7 +66,7 @@ func TestRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ok, err := rewriteTargetFile(d, "FuzzEncoder", "github.com/baz/bazonk")
+	ok, _, err := rewriteTargetFile(d, "FuzzEncoder", "github.com/baz/bazonk")
 	if err != nil {
 		t.Fatal(err)
 	}

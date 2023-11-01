@@ -104,30 +104,21 @@ func shim(ctx *cli.Context) error {
 		"output", outputFile, "buildflags", buildArgs,
 		"tags", tags)
 
-	ok, err := rewriteTargetFile(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
+	ok, restoreFn, err := rewriteTargetFile(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
 	if err != nil {
 		return err
 	}
 	if !ok {
 		return fmt.Errorf("Nothing to do with target file %v\n", targetPkg)
 	}
+	if restoreFn != nil {
+		defer restoreFn()
+	}
 	main, err := createMain(targetPkg, fuzzFunc)
 	if err != nil {
 		return err
 	}
 	return build(main, outputFile, buildArgs, tags)
-	/*
-		   Executing command: /usr/local/go/bin/go build
-		-o bitutil-fuzz.a
-		-buildmode c-archive
-		-tags gofuzz_libfuzzer,libfuzzer
-		-trimpath
-		-gcflags
-		all=-d=libfuzzer
-		# These might be needed? Not certain
-		-gcflags syscall=-d=libfuzzer=0 -gcflags runtime/pprof=-d=libfuzzer=0
-		./main.3248680275.go
-	*/
 }
 
 func build(main, out string, buildFlags, tags []string) error {
