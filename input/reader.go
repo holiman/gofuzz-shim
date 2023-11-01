@@ -117,9 +117,6 @@ func (s *Source) FillAndCall(ff any, arg0 reflect.Value) (ok bool) {
 			dynamic = append(dynamic, i)
 		}
 	}
-	if s.IsExhausted() { // exit if we've exhausted the source
-		return false
-	}
 	// Second loop to fill dynamic-sized stuff
 	// For filling the dynamic fields.
 	// If we have only one field, it should get all the remaining input.
@@ -143,9 +140,6 @@ func (s *Source) FillAndCall(ff any, arg0 reflect.Value) (ok bool) {
 			argSize = (bytesLeft * int(weights[i])) / sum
 		}
 		args[argNum] = s.fillArg(method.In(argNum), argSize)
-	}
-	if s.IsExhausted() { // exit if we've exhausted the source
-		return false
 	}
 	fn.Call(args)
 	return true
