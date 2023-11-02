@@ -56,7 +56,8 @@ func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, restoreF
 	}
 	astutil.AddImport(fset, astFile, newImport)
 	// Write into new file
-	if newFile, err := os.Create(path + "_fuzz.go"); err != nil {
+	fuzzPath := path + "_fuzz.go"
+	if newFile, err := os.Create(fuzzPath); err != nil {
 		return false, nil, fmt.Errorf("failed to create new file: %v", err)
 	} else {
 		printer.Fprint(newFile, fset, astFile)
@@ -64,13 +65,15 @@ func tryRewriteTargetFile(path, fuzzerName, newImport string) (ok bool, restoreF
 		slog.Info("Created new file", "name", newFile.Name())
 	}
 	// Rename old file
-	slog.Info("Saving original file", "path", fmt.Sprintf("%v.orig", path))
-	if err := os.Rename(path, fmt.Sprintf("%v.orig", path)); err != nil {
+	savePath := fmt.Sprintf("%v.orig", path)
+	slog.Info("Saving original file", "path", savePath)
+	if err := os.Rename(path, savePath); err != nil {
 		return false, nil, err
 	}
 	restoreFunc := func() {
-		os.Remove(path + "_fuzz.go")
-		os.Rename(fmt.Sprintf("%v.orig", path), path)
+		slog.Info("Restoring repo", "restoring", "path", "removing", fuzzPath)
+		os.Remove(fuzzPath)
+		os.Rename(savePath, path)
 	}
 	return true, restoreFunc, nil
 }
