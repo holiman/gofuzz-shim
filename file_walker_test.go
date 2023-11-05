@@ -66,7 +66,7 @@ func TestRewrite(t *testing.T) {
 		t.Fatal(err)
 	}
 	path := filepath.Join(d, "target1_test.go")
-	_, err := rewriteTargetFile(path, "FuzzEncoder", "github.com/baz/bazonk")
+	_, err := rewriteImport(path, "FuzzEncoder", "github.com/baz/bazonk")
 	if err != nil {
 		t.Fatal(err)
 	}

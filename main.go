@@ -99,13 +99,11 @@ func shim(ctx *cli.Context) error {
 		"tags", tags)
 	for _, path := range targetFiles {
 		slog.Info("Rewriting imports", "file", path)
-		restoreFn, err := rewriteTargetFile(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
+		restoreFn, err := rewriteImport(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
 		if err != nil {
 			return err
 		}
-		if restoreFn != nil {
-			defer restoreFn()
-		}
+		defer restoreFn()
 	}
 	main, err := createMain(targetPkg, fuzzFunc)
 	if err != nil {

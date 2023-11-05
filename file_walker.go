@@ -14,18 +14,18 @@ import (
 	"golang.org/x/tools/go/ast/astutil"
 )
 
-func rewriteTargetFile(path, fuzzerName, newImport string) (restoreFn func(), err error) {
+func rewriteImport(path, fuzzerName, newImport string) (restoreFn func(), err error) {
 	var fset = token.NewFileSet()
 	astFile, err := parser.ParseFile(fset, path, nil, 0)
 	if err != nil {
 		return nil, err
 	}
 	// Replace import path, if needed
-	if !astutil.DeleteImport(fset, astFile, "testing") {
+	if astutil.DeleteImport(fset, astFile, "testing") {
+		astutil.AddImport(fset, astFile, newImport)
+	} else {
 		slog.Warn("No imports to replace", "file", path)
-		return nil, nil // no need to return an error, just continue
 	}
-	astutil.AddImport(fset, astFile, newImport)
 	// Write into new file
 	fuzzPath := path + "_fuzz.go"
 	if newFile, err := os.Create(fuzzPath); err != nil {
