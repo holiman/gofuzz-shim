@@ -109,6 +109,9 @@ func shim(ctx *cli.Context) error {
 	if err != nil {
 		return err
 	}
+	if err := goTidy(); err != nil {
+		return err
+	}
 	return build(main, outputFile, buildArgs, tags)
 }
 
@@ -143,4 +146,12 @@ func createMain(targetPkg, fuzzFunc string) (string, error) {
 		Func    string
 	}
 	return mainFile.Name(), mainTmpl.Execute(mainFile, &pkgFunc{targetPkg, fuzzFunc})
+}
+
+func goTidy() error {
+	if out, err := exec.Command("go", "mod", "tidy").CombinedOutput(); err != nil {
+		fmt.Fprintln(os.Stderr, string(out))
+		return err
+	}
+	return nil
 }
