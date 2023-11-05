@@ -65,13 +65,10 @@ func TestRewrite(t *testing.T) {
 	if err := copyFile(t, "./testdata/target/target1_test.go.txt", filepath.Join(d, "target1_test.go")); err != nil {
 		t.Fatal(err)
 	}
-
-	ok, _, err := rewriteTargetFile(d, "FuzzEncoder", "github.com/baz/bazonk")
+	path := filepath.Join(d, "target1_test.go")
+	_, err := rewriteTargetFile(path, "FuzzEncoder", "github.com/baz/bazonk")
 	if err != nil {
 		t.Fatal(err)
-	}
-	if !ok {
-		t.Fatal("Rewrite failed")
 	}
 	compareFiles(t, filepath.Join(d, "target1_test.go_fuzz.go"), "./testdata/target/target1_test.go.rewritten.txt")
 }

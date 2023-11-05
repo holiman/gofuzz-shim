@@ -9,7 +9,6 @@ import (
 	"github.com/urfave/cli/v2"
 	"golang.org/x/exp/slog"
 	"os/exec"
-	"path/filepath"
 	"strings"
 )
 
@@ -25,6 +24,16 @@ var (
 		Value: "Fuzz",
 	}
 
+	targetsFlag = &cli.StringSliceFlag{
+		Name:    "fiximports",
+		Aliases: []string{"f"},
+		Usage: `Target file(s) to rewrite imports of. This is typically: 
+  1. The ".._test.go"-file which contains the main 'Fuzz(testing.F)'-function, and 
+  2. Any other ".._test.go"-files which (1) relies upon, e.g. common testing-utilities or types.
+`,
+		Value: cli.NewStringSlice("gofuzz_libfuzzer", "libfuzzer"),
+	}
+
 	packageFlag = &cli.PathFlag{
 		Name:     "package",
 		Required: true,
@@ -33,18 +42,6 @@ var (
 For example, if your fuzzer FuzzBar() resides in  /home/user/go/src/github.com/holiman/bazonk/bar/goo/foo.go, then the 
 package-path is 'github.com/holiman/bazonk/bar/goo
 '`,
-	}
-
-	goPathFlag = &cli.PathFlag{
-		Name: "gopath",
-		Usage: `If specified, this path is used to search for the repository. If not specified, the $GOPATH env variable 
-is used for locating the source code. Note: the source is expected to be found under a '/src' folder beneath the gopath. 
-
-For example, if your fuzzer FuzzBar() resides in  /home/user/go/src/github.com/holiman/bazonk/bar/goo/foo.go, then the 
-gopath is '/home/user/go/src'
-`,
-		Required: false,
-		Value:    os.Getenv("GOPATH"),
 	}
 
 	outputFlag = &cli.StringFlag{
@@ -72,8 +69,8 @@ func init() {
 	app.Copyright = "Copyright 2023 Martin Holst Swende"
 	app.Flags = []cli.Flag{
 		fuzzFlag,
+		targetsFlag,
 		packageFlag,
-		goPathFlag,
 		outputFlag,
 		buildArgsFlag,
 		tagsFlag,
@@ -88,31 +85,27 @@ func main() {
 }
 
 func shim(ctx *cli.Context) error {
-
 	var (
-		targetPkg  = ctx.Path(packageFlag.Name)
-		fuzzFunc   = ctx.String(fuzzFlag.Name)
-		tags       = ctx.StringSlice(tagsFlag.Name)
-		repoRoot   = fmt.Sprintf("%v/src", ctx.String(goPathFlag.Name))
-		path       = filepath.Join(repoRoot, targetPkg)
-		outputFile = ctx.String(outputFlag.Name)
-		buildArgs  = append(ctx.StringSlice(buildArgsFlag.Name), "-gcflags", "all=-d=libfuzzer", "-buildmode=c-archive")
+		targetPkg   = ctx.Path(packageFlag.Name)
+		targetFiles = ctx.StringSlice(targetsFlag.Name)
+		fuzzFunc    = ctx.String(fuzzFlag.Name)
+		tags        = ctx.StringSlice(tagsFlag.Name)
+		outputFile  = ctx.String(outputFlag.Name)
+		buildArgs   = append(ctx.StringSlice(buildArgsFlag.Name), "-gcflags", "all=-d=libfuzzer", "-buildmode=c-archive")
 	)
 	slog.Info("Fuzz-builder starting",
-		"function", fuzzFunc, "reporoot", repoRoot,
-		"package", targetPkg, "abspath", path,
-		"output", outputFile, "buildflags", buildArgs,
+		"function", fuzzFunc, "to-rewrite", strings.Join(targetFiles, ","),
+		"package", targetPkg, "output", outputFile, "buildflags", buildArgs,
 		"tags", tags)
-
-	ok, restoreFn, err := rewriteTargetFile(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
-	if err != nil {
-		return err
-	}
-	if !ok {
-		return fmt.Errorf("Nothing to do with target file %v\n", targetPkg)
-	}
-	if restoreFn != nil {
-		defer restoreFn()
+	for _, path := range targetFiles {
+		slog.Info("Rewriting imports", "file", path)
+		restoreFn, err := rewriteTargetFile(path, fuzzFunc, "github.com/holiman/gofuzz-shim/testing")
+		if err != nil {
+			return err
+		}
+		if restoreFn != nil {
+			defer restoreFn()
+		}
 	}
 	main, err := createMain(targetPkg, fuzzFunc)
 	if err != nil {
