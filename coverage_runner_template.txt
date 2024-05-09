@@ -15,13 +15,14 @@
 package mypackagebeingfuzzed
 
 import (
+	"fmt"
 	"io/fs"
 	"io/ioutil"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime/pprof"
 	"testing"
-	"fmt"
 
 	"github.com/holiman/gofuzz-shim/input"
 )
@@ -76,10 +77,10 @@ func TestFuzzCorpus(t *testing.T) {
 		}
 		filename = fname
 		src := input.NewSource(data)
-		src.FillAndCall(FuzzFunction)
+		src.FillAndCall(FuzzFunction, reflect.ValueOf(t))
 		return nil
 	})
 	if err != nil {
-		t.Errorf("Failed to run corpus:", err)
+		t.Errorf("Failed to run corpus: %v", err)
 	}
 }
